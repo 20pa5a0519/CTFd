@@ -1,39 +1,46 @@
-version: '3.8'
-
 services:
   ctfd:
-    image: ctfd/ctfd:latest
-    user: root
+    build: .
+    container_name: ctfd
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - UPLOAD_FOLDER=/var/uploads
-      - DATABASE_URL=python:///CTFd/ctfd.db
-      - REDIS_URL=redis://cache:6379/0
-      - WORKERS=1
-      - LOG_LEVEL=debug
+      SECRET_KEY: change-this-secret-key
+      DATABASE_URL: mysql+pymysql://ctfd:ctfd@db/ctfd
+      REDIS_URL: redis://cache:6379
+      WORKERS: 2
     volumes:
-      - .data/CTFd/logs:/var/log/CTFd
-      - .data/CTFd/uploads:/var/uploads
-      - ./plugins:/opt/CTFd/CTFd/plugins:ro
-      # Essential: Mount the docker socket to allow the plugin to spawn containers
+      - ctfd-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - cache
-    networks:
-      - ctfd_network
-      - challenge_network
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+
+  db:
+    image: mariadb:10.6
+    container_name: ctfd-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: ctfd
+      MYSQL_USER: ctfd
+      MYSQL_PASSWORD: ctfd
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   cache:
-    image: redis:4-alpine
-    restart: always
-    volumes:
-      - .data/redis:/data
-    networks:
-      - ctfd_network
+    image: redis:7
+    container_name: ctfd-cache
+    restart: unless-stopped
 
-networks:
-  ctfd_network:
-    driver: bridge
-  challenge_network:
-    driver: bridge
+volumes:
+  ctfd-data:
+  db-data:
